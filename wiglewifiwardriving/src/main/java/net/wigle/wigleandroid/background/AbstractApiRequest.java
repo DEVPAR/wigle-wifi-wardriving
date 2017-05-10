@@ -8,6 +8,7 @@ import android.util.Base64;
 import net.wigle.wigleandroid.DatabaseHelper;
 import net.wigle.wigleandroid.ListFragment;
 import net.wigle.wigleandroid.MainActivity;
+import net.wigle.wigleandroid.TokenAccess;
 import net.wigle.wigleandroid.WiGLEAuthException;
 
 import org.json.JSONException;
@@ -261,12 +262,13 @@ public abstract class AbstractApiRequest extends AbstractBackgroundTask {
         if (doBasicLogin) {
             final SharedPreferences prefs = context.getSharedPreferences(ListFragment.SHARED_PREFS, 0);
             final String authname = prefs.getString(ListFragment.PREF_AUTHNAME, null);
-            final String token = prefs.getString(ListFragment.PREF_TOKEN, null);
+            final String token = TokenAccess.getApiToken(prefs);
             final String encoded = Base64.encodeToString((authname + ":" + token).getBytes("UTF-8"), Base64.NO_WRAP);
             // Cannot set request property after connection is made
             preConnectConfigurator = new PreConnectConfigurator() {
                 @Override
                 public void configure(HttpURLConnection connection) {
+                    //TODO: for non-upload tasks, how to handle anonymity
                     connection.setRequestProperty("Authorization", "Basic " + encoded);
                 }
             };
@@ -329,8 +331,8 @@ public abstract class AbstractApiRequest extends AbstractBackgroundTask {
                                         .getSharedPreferences(ListFragment.SHARED_PREFS, 0);
                                 final SharedPreferences.Editor edit = prefs.edit();
                                 edit.putString(ListFragment.PREF_AUTHNAME, authname);
-                                edit.putString(ListFragment.PREF_TOKEN, token);
                                 edit.apply();
+                                TokenAccess.setApiToken(prefs, token);
                                 // execute ourselves, the pending task
                                 start();
                             } else if (json.has("credential_0")) {
@@ -341,9 +343,11 @@ public abstract class AbstractApiRequest extends AbstractBackgroundTask {
                             } else {
                                 throw new WiGLEAuthException("Unable to log in.");
                             }
-                        }
-                        catch (final JSONException ex) {
+                        } catch (final JSONException ex) {
                             MainActivity.warn("json exception: " + ex + " json: " + json, ex);
+                            throw new WiGLEAuthException("Unable to log in.");
+                        } catch (final Exception e) {
+                            MainActivity.warn("response exception: " + e + " json: " + json, e);
                             throw new WiGLEAuthException("Unable to log in.");
                         }
                     }

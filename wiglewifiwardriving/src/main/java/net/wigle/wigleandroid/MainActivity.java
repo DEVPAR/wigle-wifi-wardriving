@@ -3,8 +3,10 @@ package net.wigle.wigleandroid;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.AlarmManager;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.app.PendingIntent;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -64,7 +66,6 @@ import android.widget.Toast;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GooglePlayServicesUtil;
 
-import net.wigle.wigleandroid.background.FileUploaderTask;
 import net.wigle.wigleandroid.background.ObservationUploader;
 import net.wigle.wigleandroid.listener.BatteryLevelReceiver;
 import net.wigle.wigleandroid.listener.GPSListener;
@@ -90,6 +91,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.prefs.Preferences;
 
 import static android.location.LocationManager.GPS_PROVIDER;
 
@@ -118,6 +120,8 @@ public final class MainActivity extends AppCompatActivity {
         private final Fragment[] fragList = new Fragment[11];
         private boolean screenLocked = false;
         private PowerManager.WakeLock wakeLock;
+        private int logPointer = 0;
+        private String[] logs = new String[20];
     }
 
     private State state;
@@ -294,9 +298,32 @@ public final class MainActivity extends AppCompatActivity {
         if (savedInstanceState == null) {
             setupFragments();
         }
+
+        // rksh 20160202 - api/authuser secure preferences storage
+        checkInitKeystore();
+
         // show the list by default
         selectFragment(state.currentTab);
         info("onCreate setup complete");
+    }
+
+    /**
+     * migration method for viable APIs to switch to encrypted AUTH_TOKENs
+     */
+    private void checkInitKeystore() {
+        final SharedPreferences prefs = getApplicationContext().
+                getSharedPreferences(ListFragment.SHARED_PREFS, 0);
+        if (TokenAccess.checkMigrateKeystoreVersion(prefs, this)) {
+            // successful migration should remove the password value
+            if (!prefs.getString(ListFragment.PREF_PASSWORD,
+                    "").isEmpty()) {
+                final Editor editor = prefs.edit();
+                editor.remove(ListFragment.PREF_PASSWORD);
+                editor.apply();
+            }
+        } else {
+            MainActivity.info("Not able to upgrade key storage.");
+        }
     }
 
     private void setupPermissions() {
@@ -315,7 +342,9 @@ public final class MainActivity extends AppCompatActivity {
                 // The permission is NOT already granted.
                 // Check if the user has been asked about this permission already and denied
                 // it. If so, we want to give more explanation about why the permission is needed.
-                String message = mainActivity.getString(R.string.please_allow);
+                // 20170324 rksh: disabled due to
+                // https://stackoverflow.com/questions/35453759/android-screen-overlay-detected-message-if-user-is-trying-to-grant-a-permissio
+                /*String message = mainActivity.getString(R.string.please_allow);
                 for (int i = 0; i < permissionsNeeded.size(); i++) {
                     if (i > 0) message += ", ";
                     message += permissionsNeeded.get(i);
@@ -327,7 +356,7 @@ public final class MainActivity extends AppCompatActivity {
 
                 // Show our own UI to explain to the user why we need to read the contacts
                 // before actually requesting the permission and showing the default UI
-                Toast.makeText(mainActivity, message, Toast.LENGTH_LONG).show();
+                Toast.makeText(mainActivity, message, Toast.LENGTH_LONG).show();*/
 
                 MainActivity.info("no permission for " + permissionsNeeded);
 
@@ -794,7 +823,8 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     public static State getStaticState() {
-        return getMainActivity().getState();
+        final MainActivity mainActivity = getMainActivity();
+        return mainActivity == null ? null : mainActivity.getState();
     }
 
     public State getState() {
@@ -936,10 +966,20 @@ public final class MainActivity extends AppCompatActivity {
         mDrawerToggle.onConfigurationChanged(newConfig);
     }
 
+    @SuppressLint("ApplySharedPref")
     @Override
     public void onStart() {
         MainActivity.info("MAIN: start.");
+        final SharedPreferences prefs = getSharedPreferences(ListFragment.SHARED_PREFS, 0);
+        if (prefs.getBoolean(ListFragment.PREF_BLOWED_UP, false)) {
+            prefs.edit().putBoolean(ListFragment.PREF_BLOWED_UP, false).commit();
+            // activate the email intent
+            final Intent intent = new Intent(this, ErrorReportActivity.class);
+            intent.putExtra( MainActivity.ERROR_REPORT_DO_EMAIL, true );
+            startActivity(intent);
+        }
         super.onStart();
+
     }
 
     @Override
@@ -1138,7 +1178,7 @@ public final class MainActivity extends AppCompatActivity {
             return true;
         }
         return getSharedPreferences(ListFragment.SHARED_PREFS, 0)
-                .getBoolean(ListFragment.PREF_MUTED, false);
+                .getBoolean(ListFragment.PREF_MUTED, true);
     }
 
     public static void sleep(final long sleep) {
@@ -1151,26 +1191,42 @@ public final class MainActivity extends AppCompatActivity {
 
     public static void info(final String value) {
         Log.i(LOG_TAG, Thread.currentThread().getName() + "] " + value);
+        saveLog(value);
     }
 
     public static void warn(final String value) {
         Log.w(LOG_TAG, Thread.currentThread().getName() + "] " + value);
+        saveLog(value);
     }
 
     public static void error(final String value) {
         Log.e(LOG_TAG, Thread.currentThread().getName() + "] " + value);
+        saveLog(value);
     }
 
     public static void info(final String value, final Throwable t) {
         Log.i(LOG_TAG, Thread.currentThread().getName() + "] " + value, t);
+        saveLog(value);
     }
 
     public static void warn(final String value, final Throwable t) {
         Log.w(LOG_TAG, Thread.currentThread().getName() + "] " + value, t);
+        saveLog(value);
     }
 
     public static void error(final String value, final Throwable t) {
         Log.e(LOG_TAG, Thread.currentThread().getName() + "] " + value, t);
+        saveLog(value);
+    }
+
+    private static void saveLog(final String value) {
+        final State state = getStaticState();
+        if (state == null) return;
+        final int pointer = state.logPointer++ % state.logs.length;
+        state.logs[pointer] = Thread.currentThread().getName() + "] " + value;
+        if (pointer > 10000 * state.logs.length) {
+            state.logPointer -= 100 * state.logs.length;
+        }
     }
 
     /**
@@ -1277,6 +1333,23 @@ public final class MainActivity extends AppCompatActivity {
 
                 fos.write((error + "\n\n").getBytes(ENCODING));
                 throwable.printStackTrace(new PrintStream(fos));
+                try {
+                    fos.write((error + "\n\n").getBytes(ENCODING));
+                    final State state = getStaticState();
+                    final String[] logs = state.logs;
+                    int pointer = state.logPointer;
+                    final int maxPointer = pointer + logs.length;
+                    for (int i = pointer; i < maxPointer; i++) {
+                        final String log = logs[i % logs.length];
+                        if (log != null) {
+                            fos.write(log.getBytes(ENCODING));
+                            fos.write("\n".getBytes(ENCODING));
+                        }
+                    }
+                } catch (Throwable er) {
+                    // ohwell
+                    error("error getting logs for error: " + er, er);
+                }
                 fos.close();
             }
         } catch (final Exception ex) {
@@ -1404,7 +1477,8 @@ public final class MainActivity extends AppCompatActivity {
                     Toast.LENGTH_LONG).show();
         }
 
-        final WifiManager wifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE);
+        final WifiManager wifiManager = (WifiManager) this.getApplicationContext().
+                getSystemService(Context.WIFI_SERVICE);
         final SharedPreferences prefs = getSharedPreferences(ListFragment.SHARED_PREFS, 0);
         final Editor edit = prefs.edit();
 
@@ -1789,7 +1863,8 @@ public final class MainActivity extends AppCompatActivity {
             Toast.makeText(this, getString(R.string.turning_wifi_off), Toast.LENGTH_SHORT).show();
 
             // well turn it of now that we're done
-            final WifiManager wifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE);
+            final WifiManager wifiManager = (WifiManager) getApplicationContext()
+                    .getSystemService(Context.WIFI_SERVICE);
             MainActivity.info("turning back off wifi");
             try {
                 wifiManager.setWifiEnabled(false);

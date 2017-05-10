@@ -185,7 +185,7 @@ public class UploadsFragment extends Fragment {
         final SharedPreferences prefs = getActivity().getSharedPreferences(ListFragment.SHARED_PREFS, 0);
         if (listAdapter == null) {
             listAdapter = new UploadsListAdapter(getActivity().getApplicationContext(), R.layout.uploadrow);
-        } else if (!listAdapter.isEmpty() && prefs.getString(ListFragment.PREF_TOKEN,"").isEmpty()) {
+        } else if (!listAdapter.isEmpty() && !TokenAccess.hasApiToken(prefs)) {
             listAdapter.clear();
         }
         // always set our current list adapter
@@ -270,9 +270,10 @@ public class UploadsFragment extends Fragment {
             }
             bundle.putParcelableArrayList(RESULT_LIST_KEY, resultList);
             bundle.putString(KEY_QUEUE_DEPTH, json.getString(KEY_QUEUE_DEPTH));
-        }
-        catch (final JSONException ex) {
+        } catch (final JSONException ex) {
             MainActivity.error("json error: " + ex, ex);
+        } catch (final Exception e) {
+            MainActivity.error("uploads error: " + e, e);
         }
 
         final Message message = new Message();

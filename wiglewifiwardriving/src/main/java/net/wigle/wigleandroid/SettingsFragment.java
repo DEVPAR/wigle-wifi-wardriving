@@ -9,9 +9,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
+import android.content.res.Resources;
 import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
 import android.support.v4.app.Fragment;
 import android.text.Editable;
 import android.text.Html;
@@ -38,6 +41,11 @@ import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import net.wigle.wigleandroid.background.ApiDownloader;
+import net.wigle.wigleandroid.background.DownloadHandler;
+
+import static net.wigle.wigleandroid.UserStatsFragment.MSG_USER_DONE;
+
 /**
  * configure settings
  */
@@ -47,6 +55,7 @@ public final class SettingsFragment extends Fragment implements DialogListener {
     private static final int MENU_ERROR_REPORT = 13;
     private static final int DONATE_DIALOG=112;
     private static final int ANONYMOUS_DIALOG=113;
+    private static final int DEAUTHORIZE_DIALOG=114;
 
     public boolean allowRefresh = false;
 
@@ -110,23 +119,25 @@ public final class SettingsFragment extends Fragment implements DialogListener {
             }
             case ANONYMOUS_DIALOG: {
                 // turn anonymous
-                if (view != null) {
-                    final EditText user = (EditText) view.findViewById(R.id.edit_username);
-                    final EditText pass = (EditText) view.findViewById(R.id.edit_password);
-                    user.setEnabled(false);
-                    pass.setEnabled(false);
-                }
                 editor.putBoolean( ListFragment.PREF_BE_ANONYMOUS, true );
+                editor.remove(ListFragment.PREF_USERNAME);
+                editor.remove(ListFragment.PREF_PASSWORD);
+                editor.remove(ListFragment.PREF_AUTHNAME);
+                editor.remove(ListFragment.PREF_TOKEN);
                 editor.apply();
 
                 if (view != null) {
-                    final CheckBox be_anonymous = (CheckBox) view.findViewById(R.id.be_anonymous);
-                    be_anonymous.setChecked(true);
-
-                    // might have to remove or show register link
-                    updateRegister(view);
+                    this.updateView(view);
                 }
-
+                break;
+            }
+            case DEAUTHORIZE_DIALOG: {
+                editor.remove(ListFragment.PREF_AUTHNAME);
+                editor.remove(ListFragment.PREF_TOKEN);
+                editor.apply();
+                if (view != null) {
+                    this.updateView(view);
+                }
                 break;
             }
             default:
@@ -204,14 +215,73 @@ public final class SettingsFragment extends Fragment implements DialogListener {
             }
         });
 
+        final String authUser = prefs.getString(ListFragment.PREF_AUTHNAME,"");
+        final EditText user = (EditText) view.findViewById(R.id.edit_username);
+        final TextView authUserDisplay = (TextView) view.findViewById(R.id.show_authuser);
+        final TextView authUserLabel = (TextView) view.findViewById(R.id.show_authuser_label);
+        final EditText passEdit = (EditText) view.findViewById(R.id.edit_password);
+        final TextView passEditLabel = (TextView) view.findViewById(R.id.edit_password_label);
+        final CheckBox showPass = (CheckBox) view.findViewById(R.id.showpassword);
+        final String authToken = prefs.getString(ListFragment.PREF_TOKEN, "");
+        final Button deauthButton = (Button) view.findViewById(R.id.deauthorize_client);
+        final Button authButton = (Button) view.findViewById(R.id.authorize_client);
+        if (!authUser.isEmpty()) {
+            authUserDisplay.setText(authUser);
+            authUserDisplay.setVisibility(View.VISIBLE);
+            authUserLabel.setVisibility(View.VISIBLE);
+            if (!authToken.isEmpty()) {
+                deauthButton.setVisibility(View.VISIBLE);
+                deauthButton.setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        MainActivity.createConfirmation( getActivity(),
+                                getString(R.string.deauthorize_confirm),
+                                MainActivity.SETTINGS_TAB_POS, DEAUTHORIZE_DIALOG );
+                    }
+                });
+                authButton.setVisibility(View.GONE);
+                passEdit.setVisibility(View.GONE);
+                passEditLabel.setVisibility(View.GONE);
+                showPass.setVisibility(View.GONE);
+                user.setEnabled(false);
+            } else {
+                user.setEnabled(true);
+            }
+        } else {
+            user.setEnabled(true);
+            authUserDisplay.setVisibility(View.GONE);
+            authUserLabel.setVisibility(View.GONE);
+            deauthButton.setVisibility(View.GONE);
+            passEdit.setVisibility(View.VISIBLE);
+            passEditLabel.setVisibility(View.VISIBLE);
+            showPass.setVisibility(View.VISIBLE);
+            authButton.setVisibility(View.VISIBLE);
+            final Handler handler = new UserDownloadHandler(view, getActivity().getPackageName(),
+                    getResources(), this);
+            final UserStatsFragment.UserDownloadApiListener apiListener =
+                    new UserStatsFragment.UserDownloadApiListener(handler);
+            authButton.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    final ApiDownloader task = new ApiDownloader(getActivity(), ListFragment.lameStatic.dbHelper,
+                            "user-stats-cache.json", MainActivity.USER_STATS_URL, false, true, true,
+                            ApiDownloader.REQUEST_GET,
+                            apiListener);
+                    try {
+                        task.startDownload(SettingsFragment.this);
+                    } catch (WiGLEAuthException waex) {
+                        MainActivity.info("User authentication failed");
+                    }
+                }
+            });
+        }
+
         // anonymous
         final CheckBox beAnonymous = (CheckBox) view.findViewById(R.id.be_anonymous);
-        final EditText user = (EditText) view.findViewById(R.id.edit_username);
-        final EditText pass = (EditText) view.findViewById(R.id.edit_password);
         final boolean isAnonymous = prefs.getBoolean( ListFragment.PREF_BE_ANONYMOUS, false);
         if ( isAnonymous ) {
             user.setEnabled( false );
-            pass.setEnabled( false );
+            passEdit.setEnabled( false );
         }
 
         beAnonymous.setChecked( isAnonymous );
@@ -227,14 +297,13 @@ public final class SettingsFragment extends Fragment implements DialogListener {
                     // turn off until confirmed
                     buttonView.setChecked( false );
                     // confirm
-                    MainActivity.createConfirmation( getActivity(), "Upload anonymously?",
-                            MainActivity.SETTINGS_TAB_POS, ANONYMOUS_DIALOG );
-                }
-                else {
+                    MainActivity.createConfirmation( getActivity(),
+                            getString(R.string.anonymous_confirm), MainActivity.SETTINGS_TAB_POS,
+                            ANONYMOUS_DIALOG );
+                } else {
                     // unset anonymous
-                    user.setEnabled( true );
-                    pass.setEnabled( true );
-
+                    user.setEnabled(true);
+                    passEdit.setEnabled(true);
                     editor.putBoolean( ListFragment.PREF_BE_ANONYMOUS, false );
                     editor.apply();
 
@@ -286,16 +355,16 @@ public final class SettingsFragment extends Fragment implements DialogListener {
             @Override
             public void onCheckedChanged( final CompoundButton buttonView, final boolean isChecked ) {
                 if ( isChecked ) {
-                    pass.setTransformationMethod(SingleLineTransformationMethod.getInstance());
+                    passEdit.setTransformationMethod(SingleLineTransformationMethod.getInstance());
                 }
                 else {
-                    pass.setTransformationMethod(PasswordTransformationMethod.getInstance());
+                    passEdit.setTransformationMethod(PasswordTransformationMethod.getInstance());
                 }
             }
         });
 
-        pass.setText( prefs.getString( ListFragment.PREF_PASSWORD, "" ) );
-        pass.addTextChangedListener( new SetWatcher() {
+        passEdit.setText( prefs.getString( ListFragment.PREF_PASSWORD, "" ) );
+        passEdit.addTextChangedListener( new SetWatcher() {
             @Override
             public void onTextChanged( final String s ) {
                 credentialsUpdate(ListFragment.PREF_PASSWORD, editor, prefs, s);
@@ -369,6 +438,7 @@ public final class SettingsFragment extends Fragment implements DialogListener {
         if (view != null) {
             final TextView register = (TextView) view.findViewById(R.id.register);
 
+            //ALIBI: ActivateAcitivity.receiveDetections sets isAnonymous = false
             if ("".equals(username) || isAnonymous) {
                 register.setEnabled(true);
                 register.setVisibility(View.VISIBLE);
@@ -547,6 +617,40 @@ public final class SettingsFragment extends Fragment implements DialogListener {
                 break;
         }
         return false;
+    }
+
+    /**
+     * used for authentication - this seems really heavy
+     */
+    private final static class UserDownloadHandler extends DownloadHandler {
+        private SettingsFragment fragment;
+        private UserDownloadHandler(final View view, final String packageName,
+                                    final Resources resources, SettingsFragment settingsFragment) {
+            super(view, null, packageName, resources);
+            fragment = settingsFragment;
+        }
+
+        @SuppressLint("SetTextI18n")
+        @Override
+        public void handleMessage(final Message msg) {
+            final Bundle bundle = msg.getData();
+            if (msg.what == MSG_USER_DONE) {
+                if (bundle.containsKey("error")) {
+                    //ALIBI: not doing anything more here, since the toast will alert.
+                    MainActivity.info("Settings auth unsuccessful");
+                } else {
+                    MainActivity.info("Settings auth successful");
+                    final SharedPreferences prefs = MainActivity.getMainActivity()
+                            .getApplicationContext()
+                            .getSharedPreferences(ListFragment.SHARED_PREFS, 0);
+                    final Editor editor = prefs.edit();
+                    editor.remove(ListFragment.PREF_PASSWORD);
+                    editor.apply();
+                    //TODO: order dependent -verify no risk of race condition here.
+                    fragment.updateView(view);
+                }
+            }
+        }
     }
 
 }

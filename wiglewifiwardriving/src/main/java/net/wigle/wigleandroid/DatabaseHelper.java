@@ -694,6 +694,21 @@ public final class DatabaseHelper extends Thread {
                 && location.getAltitude() == 0 && location.getAccuracy() == 0
                 && update.level == 0;
 
+        /**
+         * ALIBI: +/-infinite lat/long, 0 timestamp data (even with high accuracy) is gigo
+         */
+        final boolean likelyJunk = Double.isInfinite(location.getLatitude()) ||
+                Double.isInfinite(location.getLongitude()) ||
+                location.getTime() == 0L;
+
+        /*
+        //debugging path
+        if (likelyJunk) {
+            MainActivity.info(network.getSsid() + " " + bssid + ") blank: " + blank + "isNew: " + isNew + " bigChange: " + bigChange + " fastMode: " + fastMode
+                        + " changeWorthy: " + changeWorthy + " mediumChange: " + mediumChange + " smallLocDelay: " + smallLocDelay
+                        + " smallChange: " + smallChange + " latDiff: " + latDiff + " lonDiff: " + lonDiff);
+        } */
+
         // MainActivity.info(network.getSsid() + " " + bssid + ") blank: " + blank + "isNew: " + isNew + " bigChange: " + bigChange + " fastMode: " + fastMode
         //    + " changeWorthy: " + changeWorthy + " mediumChange: " + mediumChange + " smallLocDelay: " + smallLocDelay
         //    + " smallChange: " + smallChange + " latDiff: " + latDiff + " lonDiff: " + lonDiff);
@@ -746,7 +761,10 @@ public final class DatabaseHelper extends Thread {
                 logTime( start, "db network updated" );
 
 
-                boolean newBest = bestlevel == 0 || update.level > bestlevel;
+                boolean newBest = (bestlevel == 0 || update.level > bestlevel) &&
+                        // https://github.com/wiglenet/wigle-wifi-wardriving/issues/82
+                        !likelyJunk;
+
                 // MainActivity.info("META testing network: " + bssid + " newBest: " + newBest + " updatelevel: " + update.level + " bestlevel: " + bestlevel);
                 if (newBest) {
                     bestlevel = update.level;
@@ -1019,6 +1037,12 @@ public final class DatabaseHelper extends Thread {
                 MainActivity.info( "setting db marker to: " + locCount );
                 edit.putLong( ListFragment.PREF_DB_MARKER, locCount );
             }
+        }
+        else if (maxid > locCount) {
+            final long newMaxid = Math.max(0, locCount - 10000);
+            MainActivity.warn("db marker: " + maxid + " greater than location count: " + locCount
+                    + ", setting to: " + newMaxid);
+            edit.putLong( ListFragment.PREF_DB_MARKER, newMaxid );
         }
         edit.apply();
     }

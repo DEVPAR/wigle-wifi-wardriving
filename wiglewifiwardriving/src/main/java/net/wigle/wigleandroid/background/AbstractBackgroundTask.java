@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import net.wigle.wigleandroid.DatabaseHelper;
 import net.wigle.wigleandroid.ListFragment;
 import net.wigle.wigleandroid.MainActivity;
-import net.wigle.wigleandroid.R;
+import net.wigle.wigleandroid.TokenAccess;
 import net.wigle.wigleandroid.WiGLEAuthException;
 
 import android.app.Dialog;
@@ -22,7 +22,6 @@ import android.support.annotation.NonNull;
 import android.support.v4.app.DialogFragment;
 import android.support.v4.app.FragmentActivity;
 import android.support.v4.app.FragmentManager;
-import android.widget.Toast;
 
 public abstract class AbstractBackgroundTask extends Thread implements AlertSettable {
     private static final int THREAD_PRIORITY = Process.THREAD_PRIORITY_BACKGROUND;
@@ -193,6 +192,16 @@ public abstract class AbstractBackgroundTask extends Thread implements AlertSett
         handler.setContext(context);
     }
 
+    protected final boolean validAuth() {
+        final SharedPreferences prefs = context.getSharedPreferences( ListFragment.SHARED_PREFS, 0);
+        if ( (!prefs.getString(ListFragment.PREF_AUTHNAME,"").isEmpty()) && (TokenAccess.hasApiToken(prefs))) {
+            return true;
+        }
+        return false;
+
+    }
+
+
     protected final String getUsername() {
         final SharedPreferences prefs = context.getSharedPreferences( ListFragment.SHARED_PREFS, 0);
         String username = prefs.getString( ListFragment.PREF_USERNAME, "" );
@@ -214,7 +223,7 @@ public abstract class AbstractBackgroundTask extends Thread implements AlertSett
 
     protected final String getToken() {
         final SharedPreferences prefs = context.getSharedPreferences( ListFragment.SHARED_PREFS, 0);
-        String token = prefs.getString(ListFragment.PREF_TOKEN, null);
+        String token = TokenAccess.getApiToken(prefs);
 
         if ( prefs.getBoolean( ListFragment.PREF_BE_ANONYMOUS, false) ) {
             token = "";

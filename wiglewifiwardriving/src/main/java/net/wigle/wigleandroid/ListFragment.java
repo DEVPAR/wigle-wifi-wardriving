@@ -101,6 +101,7 @@ public final class ListFragment extends Fragment implements ApiListener, DialogL
     public static final String PREF_USE_NETWORK_LOC = "useNetworkLoc";
     public static final String PREF_DISABLE_TOAST = "disableToast"; // bool
     public static final String PREF_MAP_TYPE = "mapType";
+    public static final String PREF_BLOWED_UP = "blowedUp";
 
     // what to speak on announcements
     public static final String PREF_SPEECH_PERIOD = "speechPeriod";
@@ -289,7 +290,7 @@ public final class ListFragment extends Fragment implements ApiListener, DialogL
         item.setIcon( android.R.drawable.ic_menu_gallery );
 
         final SharedPreferences prefs = getActivity().getSharedPreferences(SHARED_PREFS, 0);
-        boolean muted = prefs.getBoolean(PREF_MUTED, false);
+        boolean muted = prefs.getBoolean(PREF_MUTED, true);
         item = menu.add(0, MENU_MUTE, 0,
                 muted ? getString(R.string.play) : getString(R.string.mute));
         item.setIcon( muted ? android.R.drawable.ic_media_play
@@ -342,7 +343,7 @@ public final class ListFragment extends Fragment implements ApiListener, DialogL
                 return true;
             case MENU_MUTE:
                 final SharedPreferences prefs = getActivity().getSharedPreferences(SHARED_PREFS, 0);
-                boolean muted = prefs.getBoolean(PREF_MUTED, false);
+                boolean muted = prefs.getBoolean(PREF_MUTED, true);
                 muted = ! muted;
                 Editor editor = prefs.edit();
                 editor.putBoolean(PREF_MUTED, muted);
@@ -594,7 +595,10 @@ public final class ListFragment extends Fragment implements ApiListener, DialogL
 
     public void makeUploadDialog(final MainActivity main) {
         final SharedPreferences prefs = main.getSharedPreferences( ListFragment.SHARED_PREFS, 0 );
-        final String username = prefs.getString( ListFragment.PREF_USERNAME, "anonymous" );
+        final boolean beAnonymous = prefs.getBoolean(ListFragment.PREF_BE_ANONYMOUS, false);
+        final String username = beAnonymous? "anonymous":
+                prefs.getString( ListFragment.PREF_USERNAME, "anonymous" );
+
         final String text = getString(R.string.list_upload) + "\n" + getString(R.string.username) + ": " + username;
         MainActivity.createConfirmation( ListFragment.this.getActivity(), text, MainActivity.LIST_TAB_POS, UPLOAD_DIALOG);
     }
@@ -618,8 +622,9 @@ public final class ListFragment extends Fragment implements ApiListener, DialogL
         final State state = main.getState();
         main.setTransferring();
         // actually need this Activity context, for dialogs
+        // writeEntireDb and writeRun are both false, so PREF_DB_MARKER is used
         state.observationUploader = new ObservationUploader(main,
-                ListFragment.lameStatic.dbHelper, this, false, false, true);
+                ListFragment.lameStatic.dbHelper, this, false, false, false);
         try {
             state.observationUploader.startDownload(this);
         } catch (WiGLEAuthException waex) {

@@ -1,13 +1,13 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 24
-    buildToolsVersion '25.0.2'
+    compileSdkVersion 26
+    buildToolsVersion '25.0.3'
 
     defaultConfig {
         applicationId "net.wigle.wigleandroid"
         minSdkVersion 9
-        targetSdkVersion 24
+        targetSdkVersion 26
     }
 
     buildTypes {
@@ -16,13 +16,26 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
         }
     }
+
+    packagingOptions {
+        exclude 'META-INF/ASL2.0'
+        exclude 'META-INF/LICENSE'
+        exclude 'META-INF/NOTICE'
+        exclude 'META-INF/NOTICE.txt'
+        exclude 'META-INF/LICENSE.txt'
+        exclude 'META-INF/MANIFEST.MF'
+    }
 }
 
 dependencies {
     compile project(':android-maps-utils')
-    compile 'com.android.support:appcompat-v7:24.2.0'
-    compile 'com.google.android.gms:play-services-maps:9.4.0'
-    compile 'com.google.android.gms:play-services-vision:9.4.0'
+    compile 'com.android.support:appcompat-v7:25.3.1'
+    compile 'pl.droidsonroids.gif:android-gif-drawable:1.2.7'
+    compile 'com.google.android.gms:play-services-maps:10.0.1'
+    compile 'com.google.android.gms:play-services-vision:10.0.1'
     compile 'org.slf4j:slf4j-android:1.7.19'
     compile files('libs/TTS_library_stub.jar')
+    compile 'com.fasterxml.jackson.core:jackson-core:2.9.0.pr3'
+    compile 'com.fasterxml.jackson.core:jackson-annotations:2.9.0.pr3'
+    compile 'com.fasterxml.jackson.core:jackson-databind:2.9.0.pr3'
 }

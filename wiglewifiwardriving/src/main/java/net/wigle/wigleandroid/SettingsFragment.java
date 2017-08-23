@@ -2,7 +2,10 @@ package net.wigle.wigleandroid;
 
 import java.io.File;
 import java.io.FilenameFilter;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
+import java.util.List;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -43,6 +46,7 @@ import android.widget.TextView;
 
 import net.wigle.wigleandroid.background.ApiDownloader;
 import net.wigle.wigleandroid.background.DownloadHandler;
+import net.wigle.wigleandroid.util.SettingsUtil;
 
 import static net.wigle.wigleandroid.UserStatsFragment.MSG_USER_DONE;
 
@@ -134,6 +138,15 @@ public final class SettingsFragment extends Fragment implements DialogListener {
             case DEAUTHORIZE_DIALOG: {
                 editor.remove(ListFragment.PREF_AUTHNAME);
                 editor.remove(ListFragment.PREF_TOKEN);
+                editor.remove(ListFragment.PREF_CONFIRM_UPLOAD_USER);
+
+                String mapTileMode = prefs.getString(ListFragment.PREF_SHOW_DISCOVERED,
+                        ListFragment.PREF_MAP_NO_TILE);
+                if (ListFragment.PREF_MAP_NOTMINE_TILE.equals(mapTileMode) ||
+                        ListFragment.PREF_MAP_ONLYMINE_TILE.equals(mapTileMode)) {
+                    // ALIBI: clear show mine/others on deauthorize
+                    editor.putString(ListFragment.PREF_SHOW_DISCOVERED, ListFragment.PREF_MAP_NO_TILE);
+                }
                 editor.apply();
                 if (view != null) {
                     this.updateView(view);
@@ -225,6 +238,7 @@ public final class SettingsFragment extends Fragment implements DialogListener {
         final String authToken = prefs.getString(ListFragment.PREF_TOKEN, "");
         final Button deauthButton = (Button) view.findViewById(R.id.deauthorize_client);
         final Button authButton = (Button) view.findViewById(R.id.authorize_client);
+
         if (!authUser.isEmpty()) {
             authUserDisplay.setText(authUser);
             authUserDisplay.setVisibility(View.VISIBLE);
@@ -362,6 +376,31 @@ public final class SettingsFragment extends Fragment implements DialogListener {
                 }
             }
         });
+;
+
+        final String showDiscovered = prefs.getString( ListFragment.PREF_SHOW_DISCOVERED, ListFragment.PREF_MAP_NO_TILE);
+        final boolean isAuthenticated = (!authUser.isEmpty() && !authToken.isEmpty() && !isAnonymous);
+        final String[] mapModes = SettingsUtil.getMapModes(isAuthenticated);
+        final String[] mapModeName = SettingsUtil.getMapModeNames(isAuthenticated, this.getContext());
+
+        if (!ListFragment.PREF_MAP_NO_TILE.equals(showDiscovered)) {
+            LinearLayout mainLayout = (LinearLayout) view.findViewById(R.id.show_map_discovered_since);
+            mainLayout.setVisibility(View.VISIBLE);
+        }
+
+        SettingsUtil.doMapSpinner( R.id.show_discovered, ListFragment.PREF_SHOW_DISCOVERED,
+                ListFragment.PREF_MAP_NO_TILE, mapModes, mapModeName, getContext(), view );
+
+        int thisYear = Calendar.getInstance().get(Calendar.YEAR);
+        List<Long> yearValueBase = new ArrayList<Long>();
+        List<String> yearLabelBase = new ArrayList<String>();
+        for (int i = 2001; i <= thisYear; i++) {
+            yearValueBase.add((long)(i));
+            yearLabelBase.add(Integer.toString(i));
+        }
+        SettingsUtil.doSpinner( R.id.networks_discovered_since_year, view, ListFragment.PREF_SHOW_DISCOVERED_SINCE,
+                2001L, yearValueBase.toArray(new Long[0]),
+                yearLabelBase.toArray(new String[0]), getContext() );
 
         passEdit.setText( prefs.getString( ListFragment.PREF_PASSWORD, "" ) );
         passEdit.addTextChangedListener( new SetWatcher() {
@@ -381,22 +420,22 @@ public final class SettingsFragment extends Fragment implements DialogListener {
         });
 
         // period spinners
-        doScanSpinner( R.id.periodstill_spinner, ListFragment.PREF_SCAN_PERIOD_STILL,
-                MainActivity.SCAN_STILL_DEFAULT, getString(R.string.nonstop), view );
-        doScanSpinner( R.id.period_spinner, ListFragment.PREF_SCAN_PERIOD,
-                MainActivity.SCAN_DEFAULT, getString(R.string.nonstop), view );
-        doScanSpinner( R.id.periodfast_spinner, ListFragment.PREF_SCAN_PERIOD_FAST,
-                MainActivity.SCAN_FAST_DEFAULT, getString(R.string.nonstop), view );
-        doScanSpinner( R.id.gps_spinner, ListFragment.GPS_SCAN_PERIOD,
-                MainActivity.LOCATION_UPDATE_INTERVAL, getString(R.string.setting_tie_wifi), view );
+        SettingsUtil.doScanSpinner( R.id.periodstill_spinner, ListFragment.PREF_SCAN_PERIOD_STILL,
+                MainActivity.SCAN_STILL_DEFAULT, getString(R.string.nonstop), view, getContext() );
+        SettingsUtil.doScanSpinner( R.id.period_spinner, ListFragment.PREF_SCAN_PERIOD,
+                MainActivity.SCAN_DEFAULT, getString(R.string.nonstop), view, getContext() );
+        SettingsUtil.doScanSpinner( R.id.periodfast_spinner, ListFragment.PREF_SCAN_PERIOD_FAST,
+                MainActivity.SCAN_FAST_DEFAULT, getString(R.string.nonstop), view, getContext() );
+        SettingsUtil.doScanSpinner( R.id.gps_spinner, ListFragment.GPS_SCAN_PERIOD,
+                MainActivity.LOCATION_UPDATE_INTERVAL, getString(R.string.setting_tie_wifi), view, getContext() );
 
-        MainActivity.prefBackedCheckBox(this, view, R.id.edit_showcurrent, ListFragment.PREF_SHOW_CURRENT, true);
-        MainActivity.prefBackedCheckBox(this, view, R.id.use_metric, ListFragment.PREF_METRIC, false);
-        MainActivity.prefBackedCheckBox(this, view, R.id.found_sound, ListFragment.PREF_FOUND_SOUND, true);
-        MainActivity.prefBackedCheckBox(this, view, R.id.found_new_sound, ListFragment.PREF_FOUND_NEW_SOUND, true);
-        MainActivity.prefBackedCheckBox(this, view, R.id.circle_size_map, ListFragment.PREF_CIRCLE_SIZE_MAP, false);
-        MainActivity.prefBackedCheckBox(this, view, R.id.use_network_location, ListFragment.PREF_USE_NETWORK_LOC, false);
-        MainActivity.prefBackedCheckBox(this, view, R.id.disable_toast, ListFragment.PREF_DISABLE_TOAST, false);
+        MainActivity.prefBackedCheckBox(this.getActivity(), view, R.id.edit_showcurrent, ListFragment.PREF_SHOW_CURRENT, true);
+        MainActivity.prefBackedCheckBox(this.getActivity(), view, R.id.use_metric, ListFragment.PREF_METRIC, false);
+        MainActivity.prefBackedCheckBox(this.getActivity(), view, R.id.found_sound, ListFragment.PREF_FOUND_SOUND, true);
+        MainActivity.prefBackedCheckBox(this.getActivity(), view, R.id.found_new_sound, ListFragment.PREF_FOUND_NEW_SOUND, true);
+        MainActivity.prefBackedCheckBox(this.getActivity(), view, R.id.circle_size_map, ListFragment.PREF_CIRCLE_SIZE_MAP, false);
+        MainActivity.prefBackedCheckBox(this.getActivity(), view, R.id.use_network_location, ListFragment.PREF_USE_NETWORK_LOC, false);
+        MainActivity.prefBackedCheckBox(this.getActivity(), view, R.id.disable_toast, ListFragment.PREF_DISABLE_TOAST, false);
 
         final String[] languages = new String[]{ "", "en", "ar", "cs", "da", "de", "es", "fi", "fr", "fy",
                 "he", "hi", "hu", "it", "ja", "ko", "nl", "no", "pl", "pt", "pt-rBR", "ru", "sv", "tr", "zh" };
@@ -410,7 +449,7 @@ public final class SettingsFragment extends Fragment implements DialogListener {
                 getString(R.string.language_pt_rBR), getString(R.string.language_ru), getString(R.string.language_sv),
                 getString(R.string.language_tr), getString(R.string.language_zh),
         };
-        doSpinner( R.id.language_spinner, view, ListFragment.PREF_LANGUAGE, "", languages, languageName );
+        SettingsUtil.doSpinner( R.id.language_spinner, view, ListFragment.PREF_LANGUAGE, "", languages, languageName, getContext() );
 
         final String off = getString(R.string.off);
         final String sec = " " + getString(R.string.sec);
@@ -419,15 +458,15 @@ public final class SettingsFragment extends Fragment implements DialogListener {
         // battery kill spinner
         final Long[] batteryPeriods = new Long[]{ 1L,2L,3L,4L,5L,10L,15L,20L,0L };
         final String[] batteryName = new String[]{ "1 %","2 %","3 %","4 %","5 %","10 %","15 %","20 %",off };
-        doSpinner( R.id.battery_kill_spinner, view, ListFragment.PREF_BATTERY_KILL_PERCENT,
-                MainActivity.DEFAULT_BATTERY_KILL_PERCENT, batteryPeriods, batteryName );
+        SettingsUtil.doSpinner( R.id.battery_kill_spinner, view, ListFragment.PREF_BATTERY_KILL_PERCENT,
+                MainActivity.DEFAULT_BATTERY_KILL_PERCENT, batteryPeriods, batteryName, getContext() );
 
         // reset wifi spinner
         final Long[] resetPeriods = new Long[]{ 15000L,30000L,60000L,90000L,120000L,300000L,600000L,0L };
         final String[] resetName = new String[]{ "15" + sec, "30" + sec,"1" + min,"1.5" + min,
                 "2" + min,"5" + min,"10" + min,off };
-        doSpinner( R.id.reset_wifi_spinner, view, ListFragment.PREF_RESET_WIFI_PERIOD,
-                MainActivity.DEFAULT_RESET_WIFI_PERIOD, resetPeriods, resetName );
+        SettingsUtil.doSpinner( R.id.reset_wifi_spinner, view, ListFragment.PREF_RESET_WIFI_PERIOD,
+                MainActivity.DEFAULT_RESET_WIFI_PERIOD, resetPeriods, resetName, getContext() );
     }
 
     private void updateRegister(final View view) {
@@ -472,6 +511,7 @@ public final class SettingsFragment extends Fragment implements DialogListener {
         // ALIBI: if the u|p changes, force refetch token
         editor.remove(ListFragment.PREF_AUTHNAME);
         editor.remove(ListFragment.PREF_TOKEN);
+        editor.remove(ListFragment.PREF_CONFIRM_UPLOAD_USER);
         editor.apply();
         this.clearCachefiles();
     }
@@ -507,90 +547,6 @@ public final class SettingsFragment extends Fragment implements DialogListener {
             donate.setEnabled(false);
             donate.setVisibility(View.GONE);
         }
-    }
-
-    private void doScanSpinner( final int id, final String pref, final long spinDefault,
-                                final String zeroName, final View view ) {
-        final String ms = " " + getString(R.string.ms_short);
-        final String sec = " " + getString(R.string.sec);
-        final String min = " " + getString(R.string.min);
-
-        final Long[] periods = new Long[]{ 0L,50L,250L,500L,750L,1000L,1500L,2000L,3000L,4000L,5000L,10000L,30000L,60000L };
-        final String[] periodName = new String[]{ zeroName,"50" + ms,"250" + ms,"500" + ms,"750" + ms,
-                "1" + sec,"1.5" + sec,"2" + sec,
-                "3" + sec,"4" + sec,"5" + sec,"10" + sec,"30" + sec,"1" + min };
-        doSpinner(id, view, pref, spinDefault, periods, periodName);
-    }
-
-    private <V> void doSpinner(final int id, final View view, final String pref, final V spinDefault,
-                               final V[] periods, final String[] periodName) {
-        doSpinner((Spinner)view.findViewById(id), pref, spinDefault, periods, periodName, getContext());
-    }
-
-    public static <V> void doSpinner( final Spinner spinner, final String pref, final V spinDefault, final V[] periods,
-                   final String[] periodName, final Context context ) {
-
-        if ( periods.length != periodName.length ) {
-            throw new IllegalArgumentException("lengths don't match, periods: " + Arrays.toString(periods)
-                    + " periodName: " + Arrays.toString(periodName));
-        }
-
-        final SharedPreferences prefs = context.getSharedPreferences(ListFragment.SHARED_PREFS, 0);
-        final Editor editor = prefs.edit();
-
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(
-                context, android.R.layout.simple_spinner_item);
-
-        Object period = null;
-        if ( periods instanceof Long[] ) {
-            period = prefs.getLong( pref, (Long) spinDefault );
-        }
-        else if ( periods instanceof String[] ) {
-            period = prefs.getString( pref, (String) spinDefault );
-        }
-        else {
-            MainActivity.error("unhandled object type array: " + Arrays.toString(periods) + " class: " + periods.getClass());
-        }
-
-        if (period == null) {
-            period = periods[0];
-        }
-
-        int periodIndex = 0;
-        for ( int i = 0; i < periods.length; i++ ) {
-            adapter.add( periodName[i] );
-            if ( period.equals(periods[i]) ) {
-                periodIndex = i;
-            }
-        }
-        adapter.setDropDownViewResource( android.R.layout.simple_spinner_dropdown_item );
-        spinner.setAdapter( adapter );
-        spinner.setSelection( periodIndex );
-        spinner.setOnItemSelectedListener( new OnItemSelectedListener() {
-            @Override
-            public void onItemSelected( final AdapterView<?> parent, final View v, final int position, final long id ) {
-                // set pref
-                final V period = periods[position];
-                MainActivity.info( pref + " setting scan period: " + period );
-                if ( period instanceof Long ) {
-                    editor.putLong( pref, (Long) period );
-                }
-                else if ( period instanceof String ) {
-                    editor.putString( pref, (String) period );
-                }
-                else {
-                    MainActivity.error("unhandled object type: " + period + " class: " + period.getClass());
-                }
-                editor.apply();
-
-                if ( period instanceof String ) {
-                    MainActivity.setLocale( context, context.getResources().getConfiguration() );
-                }
-
-            }
-            @Override
-            public void onNothingSelected( final AdapterView<?> arg0 ) {}
-        });
     }
 
     /* Creates the menu items */

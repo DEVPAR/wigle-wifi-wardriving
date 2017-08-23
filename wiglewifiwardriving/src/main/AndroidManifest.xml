@@ -2,12 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="net.wigle.wigleandroid"
     android:installLocation="auto"
-    android:versionCode="219"
-    android:versionName="2.19">
+    android:versionCode="221"
+    android:versionName="2.21">
 
     <uses-sdk
         android:minSdkVersion="9"
-        android:targetSdkVersion="24" />
+        android:targetSdkVersion="26" />
 
     <supports-screens
         android:anyDensity="true"
@@ -72,18 +72,6 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.ACTION_SYNC" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.ACTION_INSERT" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.ACTION_DELETE" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
         </activity>
         <activity
             android:name=".ActivateActivity"
@@ -139,6 +127,34 @@
                 android:value=".MainActivity" />
         </activity>
         <activity
+            android:name=".FilterActivity"
+            android:configChanges="keyboard|keyboardHidden|orientation|locale|screenSize"
+            android:exported="false"
+            android:label="@string/filter_app_name"
+            android:launchMode="singleTask"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.AppCompat">
+
+            <!-- Parent activity meta-data to support API level 7+ -->
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".MainActivity" />
+        </activity>
+        <activity
+            android:name=".MapFilterActivity"
+            android:configChanges="keyboard|keyboardHidden|orientation|locale|screenSize"
+            android:exported="false"
+            android:label="@string/mapfilter_app_name"
+            android:launchMode="singleTask"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.AppCompat">
+
+            <!-- Parent activity meta-data to support API level 7+ -->
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".MainActivity" />
+        </activity>
+        <activity
             android:name=".DBResultActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|locale|screenSize"
             android:exported="false"
@@ -177,7 +193,11 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-
+        <receiver android:name=".listener.TerminationReceiver" >
+            <intent-filter>
+                <action android:name="net.wigle.wigleandroid.END" />
+            </intent-filter>
+        </receiver>
         <service
             android:name=".WigleService"
             android:enabled="true"

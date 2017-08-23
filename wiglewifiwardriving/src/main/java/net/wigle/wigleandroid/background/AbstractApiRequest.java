@@ -84,11 +84,7 @@ public abstract class AbstractApiRequest extends AbstractBackgroundTask {
         return createConnection(connectURL, setBoundary, preConnectConfigurator, connectionMethod);
     }
 
-    private static HttpURLConnection createConnection(final URL connectURL, final boolean setBoundary,
-                                                      final PreConnectConfigurator preConnectConfigurator,
-                                                      final String connectionMethod)
-            throws IOException {
-
+    public static String getUserAgentString() {
         String javaVersion = "unknown";
         try {
             javaVersion =  System.getProperty("java.vendor") + " " +
@@ -100,7 +96,15 @@ public abstract class AbstractApiRequest extends AbstractBackgroundTask {
                     System.getProperty("os.version") +
                     " [" + System.getProperty("os.arch") + "]";
         } catch (RuntimeException ignored) { }
-        final String userAgent = "WigleWifi ("+javaVersion+")";
+        return "WigleWifi ("+javaVersion+")";
+    }
+
+    private static HttpURLConnection createConnection(final URL connectURL, final boolean setBoundary,
+                                                      final PreConnectConfigurator preConnectConfigurator,
+                                                      final String connectionMethod)
+            throws IOException {
+
+        final String userAgent = AbstractApiRequest.getUserAgentString();
 
         // Open a HTTP connection to the URL
         HttpURLConnection conn = (HttpURLConnection) connectURL.openConnection();
@@ -197,7 +201,7 @@ public abstract class AbstractApiRequest extends AbstractBackgroundTask {
         try {
             fos = MainActivity.createFile(context, cacheFilename);
             // header
-            FileUploaderTask.writeFos(fos, result);
+            ObservationUploader.writeFos(fos, result);
         }
         catch (final IOException ex) {
             MainActivity.error("exception caching result: " + ex, ex);
@@ -227,13 +231,15 @@ public abstract class AbstractApiRequest extends AbstractBackgroundTask {
                 ListFragment.SHARED_PREFS, 0);
         final boolean beAnonymous = prefs.getBoolean(ListFragment.PREF_BE_ANONYMOUS, false);
         final String authname = prefs.getString(ListFragment.PREF_AUTHNAME, null);
+        final String username = prefs.getString(ListFragment.PREF_USERNAME, null);
+        final String password = prefs.getString(ListFragment.PREF_PASSWORD, null);
         MainActivity.info("authname: " + authname);
         if (beAnonymous && requiresLogin) {
             MainActivity.info("anonymous, not running ApiRequest: " + this);
             return;
         }
-        if (authname == null && doBasicLogin) {
-            MainActivity.info("No authname, going to request token");
+        if (authname == null && username != null && password != null && doBasicLogin) {
+            MainActivity.info("No authname but have username, going to request token");
             downloadTokenAndStart(fragment);
         } else {
             start();
@@ -241,7 +247,6 @@ public abstract class AbstractApiRequest extends AbstractBackgroundTask {
     }
 
     protected String getResultString(final BufferedReader reader) throws IOException, InterruptedException {
-        // final Bundle bundle = new Bundle();
         String line;
         final StringBuilder result = new StringBuilder();
         while ( (line = reader.readLine()) != null ) {

@@ -3,10 +3,10 @@ package net.wigle.wigleandroid;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.app.AlarmManager;
 import android.app.AlertDialog;
 import android.app.Dialog;
-import android.app.PendingIntent;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -44,6 +44,7 @@ import android.support.v7.app.ActionBarDrawerToggle;
 import android.support.v7.app.AppCompatActivity;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
@@ -91,7 +92,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.prefs.Preferences;
 
 import static android.location.LocationManager.GPS_PROVIDER;
 
@@ -156,6 +156,8 @@ public final class MainActivity extends AppCompatActivity {
     public static final long SCAN_FAST_DEFAULT = 1000L;
     public static final long DEFAULT_BATTERY_KILL_PERCENT = 2L;
 
+    public static final String ACTION_END = "net.wigle.wigleandroid.END";
+
     private static MainActivity mainActivity;
     private static ListFragment listActivity;
     private BatteryLevelReceiver batteryLevelReceiver;
@@ -186,6 +188,7 @@ public final class MainActivity extends AppCompatActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         info("MAIN onCreate. state:  " + state);
+
         // set language
         setLocale(this);
         setContentView(R.layout.main);
@@ -279,6 +282,7 @@ public final class MainActivity extends AppCompatActivity {
             state.numberFormat8 = NumberFormat.getNumberInstance(Locale.US);
             if (state.numberFormat8 instanceof DecimalFormat) {
                 state.numberFormat8.setMaximumFractionDigits(8);
+                state.numberFormat8.setMinimumFractionDigits(8);
             }
         }
 
@@ -623,27 +627,6 @@ public final class MainActivity extends AppCompatActivity {
         state.fragList[SETTINGS_TAB_POS] = settings;
     }
 
-    private void handleIntent() {
-        // Get the intent that started this activity
-        final Intent intent = getIntent();
-
-        // Figure out what to do based on the intent type
-        MainActivity.info("ShareActivity intent type: " + intent.getAction());
-        switch (intent.getAction()) {
-            case Intent.ACTION_INSERT:
-                MainActivity.getMainActivity().handleScanChange(true);
-                break;
-            case Intent.ACTION_DELETE:
-                MainActivity.getMainActivity().handleScanChange(false);
-                break;
-            case Intent.ACTION_SYNC:
-                MainActivity.getMainActivity().doUpload();
-                break;
-            default:
-                MainActivity.info("Unhandled intent action: " + intent.getAction());
-        }
-    }
-
     @Override
     public boolean onMenuOpened(int featureId, Menu menu) {
         if (featureId == Window.FEATURE_ACTION_BAR && menu != null) {
@@ -673,6 +656,18 @@ public final class MainActivity extends AppCompatActivity {
         if (main != null) {
             main.setLockScreen(lockScreen);
         }
+    }
+
+    public static boolean isHighDefinition() {
+        if (Build.VERSION.SDK_INT >= 17) {
+            DisplayMetrics metrics = new DisplayMetrics();
+            MainActivity.getMainActivity().getWindowManager().getDefaultDisplay().getRealMetrics(metrics);
+            int dpi = metrics.densityDpi;
+            if (dpi >= 240) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static boolean isScreenLocked(Fragment fragment) {
@@ -806,9 +801,9 @@ public final class MainActivity extends AppCompatActivity {
         return checkbox;
     }
 
-    public static CheckBox prefBackedCheckBox(final Fragment fragment, final View view, final int id,
+    public static CheckBox prefBackedCheckBox(final Activity activity, final View view, final int id,
                                               final String pref, final boolean def) {
-        final SharedPreferences prefs = fragment.getActivity().getSharedPreferences(ListFragment.SHARED_PREFS, 0);
+        final SharedPreferences prefs = activity.getSharedPreferences(ListFragment.SHARED_PREFS, 0);
         final Editor editor = prefs.edit();
         final CheckBox checkbox = prefSetCheckBox(prefs, view, id, pref, def);
         checkbox.setOnCheckedChangeListener(new OnCheckedChangeListener() {
@@ -978,6 +973,7 @@ public final class MainActivity extends AppCompatActivity {
             intent.putExtra( MainActivity.ERROR_REPORT_DO_EMAIL, true );
             startActivity(intent);
         }
+
         super.onStart();
 
     }
@@ -1543,6 +1539,7 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     public void setTransferring() {
+        info("setTransferring");
         state.transferring.set(true);
     }
 
@@ -1566,7 +1563,15 @@ public final class MainActivity extends AppCompatActivity {
         // could be set by nonconfig retain
         if (state.serviceConnection == null) {
             final Intent serviceIntent = new Intent(getApplicationContext(), WigleService.class);
-            final ComponentName compName = startService(serviceIntent);
+            ComponentName compName;
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                MainActivity.info("startForegroundService");
+                compName = startForegroundService(serviceIntent);
+            }
+            else {
+                compName = startService(serviceIntent);
+            }
             if (compName == null) {
                 MainActivity.error("startService() failed!");
             } else {
@@ -1640,6 +1645,7 @@ public final class MainActivity extends AppCompatActivity {
         if (isScanning) {
             if (listActivity != null) {
                 listActivity.setStatusUI(getString(R.string.list_scanning_on));
+                listActivity.setScanningStatusIndicator(true);
             }
             if (state.wifiReceiver != null) {
                 state.wifiReceiver.updateLastScanResponseTime();
@@ -1653,6 +1659,7 @@ public final class MainActivity extends AppCompatActivity {
         } else {
             if (listActivity != null) {
                 listActivity.setStatusUI(getString(R.string.list_scanning_off));
+                listActivity.setScanningStatusIndicator(false);
             }
             // turn off location updates
             this.setLocationUpdates(0L, 0f);

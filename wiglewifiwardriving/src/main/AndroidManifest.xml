@@ -2,11 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="net.wigle.wigleandroid"
     android:installLocation="auto"
-    android:versionCode="221"
-    android:versionName="2.21">
+    android:versionCode="224"
+    android:versionName="2.24">
 
     <uses-sdk
-        android:minSdkVersion="9"
+        android:minSdkVersion="14"
         android:targetSdkVersion="26" />
 
     <supports-screens
@@ -139,6 +139,20 @@
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
                 android:value=".MainActivity" />
+        </activity>
+        <activity
+            android:name=".MacFilterActivity"
+            android:configChanges="keyboard|keyboardHidden|orientation|locale|screenSize"
+            android:exported="false"
+            android:label="@string/mac_filter_app_name"
+            android:launchMode="singleTask"
+            android:parentActivityName=".FilterActivity"
+            android:theme="@style/Theme.AppCompat">
+
+            <!-- Parent activity meta-data to support API level 7+ -->
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".FilterActivity" />
         </activity>
         <activity
             android:name=".MapFilterActivity"

@@ -9,8 +9,6 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
 import android.content.res.Configuration;
-import android.graphics.Canvas;
-import android.graphics.Movie;
 import android.location.Location;
 import android.os.Bundle;
 import android.support.v4.app.DialogFragment;
@@ -45,7 +43,6 @@ import net.wigle.wigleandroid.model.QueryArgs;
 
 import org.json.JSONObject;
 
-import java.io.InputStream;
 import java.text.NumberFormat;
 import java.util.Set;
 
@@ -64,7 +61,6 @@ public final class ListFragment extends Fragment implements ApiListener, DialogL
 
     private static final int SORT_DIALOG = 100;
     private static final int UPLOAD_DIALOG = 101;
-    private static final int SSID_FILTER = 102;
 
     public static final float MIN_DISTANCE_ACCURACY = 32f;
 
@@ -118,6 +114,8 @@ public final class ListFragment extends Fragment implements ApiListener, DialogL
     public static final String PREF_MAP_NOTMINE_TILE = "NOTMINE";
     public static final String PREF_MAP_ALL_TILE = "ALL";
     public static final String PREF_CONFIRM_UPLOAD_USER = "confirmUploadUser";
+    public static final String PREF_EXCLUDE_DISPLAY_ADDRS = "displayExcludeAddresses";
+    public static final String PREF_EXCLUDE_LOG_ADDRS = "logExcludeAddresses";
 
     // what to speak on announcements
     public static final String PREF_SPEECH_PERIOD = "speechPeriod";
@@ -235,6 +233,10 @@ public final class ListFragment extends Fragment implements ApiListener, DialogL
             final TextView tv = (TextView) view.findViewById( R.id.status );
             tv.setText( status );
         }
+        MainActivity ma = MainActivity.getMainActivity();
+        if (null != ma) {
+            setScanningStatusIndicator(ma.isScanning());
+        }
     }
 
     public void setScanningStatusIndicator(boolean scanning) {
@@ -265,6 +267,8 @@ public final class ListFragment extends Fragment implements ApiListener, DialogL
         MainActivity.info( "LIST: resumed.");
         super.onResume();
         getActivity().setTitle(R.string.list_app_name);
+        //ALIBI: default status can confuse users on resume
+        setStatusUI(null);
     }
 
     @Override
@@ -563,6 +567,7 @@ public final class ListFragment extends Fragment implements ApiListener, DialogL
                 }
                 else {
                     latText = getString(R.string.list_scanning_off);
+                    setScanningStatusIndicator(false);
                 }
             }
             else {

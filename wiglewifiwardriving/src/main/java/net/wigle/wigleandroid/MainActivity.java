@@ -19,6 +19,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.graphics.Color;
 import android.location.LocationManager;
 import android.location.LocationProvider;
 import android.media.AudioManager;
@@ -66,6 +67,7 @@ import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GooglePlayServicesUtil;
+import com.google.gson.Gson;
 
 import net.wigle.wigleandroid.background.ObservationUploader;
 import net.wigle.wigleandroid.listener.BatteryLevelReceiver;
@@ -92,6 +94,8 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static android.location.LocationManager.GPS_PROVIDER;
 
@@ -122,6 +126,8 @@ public final class MainActivity extends AppCompatActivity {
         private PowerManager.WakeLock wakeLock;
         private int logPointer = 0;
         private String[] logs = new String[20];
+        Matcher bssidLogExclusions;
+        Matcher bssidDisplayExclusions;
     }
 
     private State state;
@@ -216,6 +222,7 @@ public final class MainActivity extends AppCompatActivity {
         fm.executePendingTransactions();
         StateFragment stateFragment = (StateFragment) fm.findFragmentByTag(STATE_FRAGMENT_TAG);
 
+        final SharedPreferences prefs = getSharedPreferences(ListFragment.SHARED_PREFS, 0);
         if (stateFragment != null && stateFragment.getState() != null) {
             info("MAIN: using retained stateFragment state");
             // pry an orientation change, which calls destroy, but we get this from retained fragment
@@ -238,7 +245,6 @@ public final class MainActivity extends AppCompatActivity {
             stateFragment.setState(state);
             fm.beginTransaction().add(stateFragment, STATE_FRAGMENT_TAG).commit();
             // new run, reset
-            final SharedPreferences prefs = getSharedPreferences(ListFragment.SHARED_PREFS, 0);
             final float prevRun = prefs.getFloat(ListFragment.PREF_DISTANCE_RUN, 0f);
             Editor edit = prefs.edit();
             edit.putFloat(ListFragment.PREF_DISTANCE_RUN, 0f);
@@ -302,6 +308,7 @@ public final class MainActivity extends AppCompatActivity {
         if (savedInstanceState == null) {
             setupFragments();
         }
+        setupFilters(prefs);
 
         // rksh 20160202 - api/authuser secure preferences storage
         checkInitKeystore();
@@ -405,7 +412,7 @@ public final class MainActivity extends AppCompatActivity {
 
                 if (restart) {
                     // restart the app now that we can talk to the database
-                    Toast.makeText(mainActivity, R.string.restart, Toast.LENGTH_LONG).show();
+                    info("Restarting to pick up storage permission");
 
                     Intent i = getBaseContext().getPackageManager()
                             .getLaunchIntentForPackage(getBaseContext().getPackageName());
@@ -464,8 +471,15 @@ public final class MainActivity extends AppCompatActivity {
                 } else {
                     view = convertView;
                 }
+
                 final TextView text = (TextView) view.findViewById(R.id.drawer_list_text);
                 text.setText(menuTitles[position]);
+                //If that's the Exit button, set the background to red
+                if(position == EXIT_TAB_POS) {
+                    view.setBackgroundColor(Color.argb(200,70,0,0));
+                }else{
+                    view.setBackgroundColor(0);
+                }
                 final ImageView image = (ImageView) view.findViewById(R.id.drawer_list_icon);
                 image.setImageResource(menuIcons[position]);
 
@@ -548,7 +562,9 @@ public final class MainActivity extends AppCompatActivity {
         } catch (final NullPointerException | IllegalStateException ex) {
             final String message = "exception in fragment switch: " + ex;
             error(message, ex);
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+            if (!isFinishing()) {
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+            }
         }
 
         // Highlight the selected item, update the title, and close the drawer
@@ -767,6 +783,7 @@ public final class MainActivity extends AppCompatActivity {
         } catch (final IllegalStateException ex) {
             final String errorMessage = "Exception trying to show dialog: " + ex;
             MainActivity.error(errorMessage, ex);
+            //TODO: in this static context, we can't check isFinishing
             Toast.makeText(activity, errorMessage, Toast.LENGTH_LONG).show();
         }
     }
@@ -1401,6 +1418,85 @@ public final class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Instantiate both both BSSID matchers - inital load
+     * @param prefs
+     */
+    private void setupFilters(final SharedPreferences prefs) {
+        if (null != state) {
+            state.bssidDisplayExclusions = generateBssidFilterMatcher(prefs, ListFragment.PREF_EXCLUDE_DISPLAY_ADDRS);
+            state.bssidLogExclusions = generateBssidFilterMatcher(prefs, ListFragment.PREF_EXCLUDE_LOG_ADDRS);
+            //TODO: port SSID matcher over as well?
+        }
+    }
+
+    /**
+     * Trigger recreation of BSSID address filter from prefs
+     * @param addressKey
+     */
+    public void updateAddressFilter(final String addressKey) {
+        if (null != state) {
+            final SharedPreferences prefs = this.getSharedPreferences(ListFragment.SHARED_PREFS, 0);
+            if (ListFragment.PREF_EXCLUDE_DISPLAY_ADDRS.equals(addressKey)) {
+                state.bssidDisplayExclusions = generateBssidFilterMatcher(prefs, ListFragment.PREF_EXCLUDE_DISPLAY_ADDRS);
+            } else if (ListFragment.PREF_EXCLUDE_LOG_ADDRS.equals(addressKey)) {
+                state.bssidLogExclusions = generateBssidFilterMatcher(prefs, ListFragment.PREF_EXCLUDE_LOG_ADDRS);
+            }
+        }
+    }
+
+    /**
+     * Accessor for state BSSID matchers
+     * @param addressKey
+     * @return
+     */
+    public Matcher getBssidFilterMatcher(final String addressKey) {
+        if (null != state) {
+            if (ListFragment.PREF_EXCLUDE_DISPLAY_ADDRS.equals(addressKey)) {
+                return state.bssidDisplayExclusions;
+            } else if (ListFragment.PREF_EXCLUDE_LOG_ADDRS.equals(addressKey)) {
+                return state.bssidLogExclusions;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Build a BSSID matcher from preferences for the supplied key
+     * @param prefs
+     * @param addressKey
+     * @return
+     */
+    private Matcher generateBssidFilterMatcher( final SharedPreferences prefs,  final String addressKey) {
+        Gson gson = new Gson();
+        Matcher matcher = null;
+        final String f = prefs.getString( ListFragment.PREF_EXCLUDE_DISPLAY_ADDRS, "");
+        String[] values = gson.fromJson(prefs.getString(addressKey, "[]"), String[].class);
+        if(values.length>0) {
+            StringBuffer sb = new StringBuffer("^(");
+            boolean first = true;
+            for (String value: values) {
+
+                if (first) {
+                    first = false;
+                } else {
+                    sb.append("|");
+                }
+                sb.append(value);
+                if (value.length() == 17) {
+                    sb.append("$");
+                }
+            }
+            sb.append(")");
+            //TODO: debug
+            MainActivity.info("building regex from: "+sb.toString());
+            Pattern pattern = Pattern.compile( sb.toString(), Pattern.CASE_INSENSITIVE );
+            matcher = pattern.matcher( "" );
+        }
+
+        return matcher;
+    }
+
     public boolean inEmulator() {
         return state.inEmulator;
     }
@@ -1468,7 +1564,7 @@ public final class MainActivity extends AppCompatActivity {
         @SuppressWarnings("deprecation")
         final String notifOn = Settings.Secure.getString(getContentResolver(),
                 Settings.Secure.WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON);
-        if (notifOn != null && "1".equals(notifOn) && state.wifiReceiver == null) {
+        if (notifOn != null && "1".equals(notifOn) && state.wifiReceiver == null && !isFinishing()) {
             Toast.makeText(this, getString(R.string.best_results),
                     Toast.LENGTH_LONG).show();
         }
@@ -1482,7 +1578,9 @@ public final class MainActivity extends AppCompatActivity {
         boolean turnedWifiOn = false;
         if (!wifiManager.isWifiEnabled()) {
             // tell user, cuz this takes a little while
-            Toast.makeText(this, getString(R.string.turn_on_wifi), Toast.LENGTH_LONG).show();
+            if (!isFinishing()) {
+                Toast.makeText(this, getString(R.string.turn_on_wifi), Toast.LENGTH_LONG).show();
+            }
 
             // save so we can turn it back off when we exit
             edit.putBoolean(ListFragment.PREF_WIFI_WAS_OFF, true);
@@ -1605,9 +1703,9 @@ public final class MainActivity extends AppCompatActivity {
             // check if there is a gps
             final LocationProvider locProvider = locationManager.getProvider(GPS_PROVIDER);
 
-            if (locProvider == null) {
+            if (locProvider == null && !isFinishing()) {
                 Toast.makeText(this, getString(R.string.no_gps_device), Toast.LENGTH_LONG).show();
-            } else if (!locationManager.isProviderEnabled(GPS_PROVIDER)) {
+            } else if (!locationManager.isProviderEnabled(GPS_PROVIDER) && !isFinishing()) {
                 // gps exists, but isn't on
                 Toast.makeText(this, getString(R.string.turn_on_gps), Toast.LENGTH_LONG).show();
                 final Intent myIntent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
@@ -1866,9 +1964,6 @@ public final class MainActivity extends AppCompatActivity {
         final boolean wifiWasOff = prefs.getBoolean(ListFragment.PREF_WIFI_WAS_OFF, false);
         // don't call on emulator, it crashes it
         if (wifiWasOff && !state.inEmulator) {
-            // tell user, cuz this takes a little while
-            Toast.makeText(this, getString(R.string.turning_wifi_off), Toast.LENGTH_SHORT).show();
-
             // well turn it of now that we're done
             final WifiManager wifiManager = (WifiManager) getApplicationContext()
                     .getSystemService(Context.WIFI_SERVICE);
